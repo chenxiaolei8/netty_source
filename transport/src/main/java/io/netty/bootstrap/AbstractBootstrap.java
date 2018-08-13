@@ -278,13 +278,25 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return doBind(localAddress);
     }
 
+    /**
+     * 启动ServerBootstrap
+     * 声明一个Channel对象 实际上就是NioServerSocketChannel 这个Channel会被register 到之前声明的boss NioEventLoopGroup中
+     * 然后在调用doBind0帮点端口
+     * 向这个Channel的pipeline 里添加一个ChannelInitializer对象 这个对象继承于 ChannelInboundHandler接口 后续初始化的时候
+     * 会往里添加一个ServerBootstrapAcceptor
+     * @param localAddress
+     * @return
+     */
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 初始化并注册
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
-
+        /*
+        * 如果已经返回成功 则直接调用doBind0 否则注册回调 在会回调里调用doBind0
+        * */
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
@@ -314,10 +326,23 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
     }
 
+    /**
+     * 初始化 注册channel
+     * 这是在创建Channel
+     * 2018 07 31 读
+     * 通过反射产生一个NioServerSocketChannel
+     * 完成了初始化
+     * 将NioServerSocketChannel进行了register
+     * @return
+     */
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // 调用AbstractBootstrap 的 channelFactory属性 创建一个 ServerBootstrap 类型的channel  比如 nioServerSocketChannel
+            // 创建了一个NioServerSocketChannel
+            // 通过ReflectiveChannelFactory返回实例化出来
             channel = channelFactory.newChannel();
+            // 初始化通道
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -329,7 +354,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
-
+        // 注册到selector 并HandlerAdd HandlerRegister 初始化
+        // config().group() 得到boss NioEventLoopGroup 回调用 NioEventLoop
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -372,7 +398,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * the {@link ChannelHandler} to use for serving the requests.
+     * the {@link ChannelHandler} to use for serv ing the requests.
      */
     public B handler(ChannelHandler handler) {
         if (handler == null) {

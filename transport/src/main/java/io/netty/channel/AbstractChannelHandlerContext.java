@@ -781,7 +781,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
 
     @Override
     public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
-        if (msg == null) {
+        if (msg == null) { // 不允许写入null
             throw new NullPointerException("msg");
         }
 

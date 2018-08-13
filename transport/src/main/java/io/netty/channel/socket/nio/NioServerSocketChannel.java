@@ -56,6 +56,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
              *
              *  See <a href="https://github.com/netty/netty/issues/2308">#2308</a>.
              */
+        // jdk 底层的channel
             return provider.openServerSocketChannel();
         } catch (IOException e) {
             throw new ChannelException(
@@ -81,9 +82,15 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     /**
      * Create a new instance using the given {@link ServerSocketChannel}.
+     * new Socket() 通过jdk创建底层jdk channel
+     * nioServerSocketChannelConfig() 设置tcp的参数
+     *          AbstractNioChannel
+     *              设置configureBlocking(false)
+     *              AbstractChannel 创建 id unsafe pipeline
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
         super(null, channel, SelectionKey.OP_ACCEPT);
+         // 创建 nioServerSocketChannelConfig
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
 

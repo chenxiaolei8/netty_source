@@ -38,7 +38,16 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * {@link Bootstrap} sub-class which allows easy bootstrap of {@link ServerChannel}
- *
+ * 服务区使用的 Bootstrap
+ * 它包含两个EventLoopGroup
+ * bossGroup 用来接收新的连接
+ * workGroup 处理请求 工作线程
+ * 可以看到 bossGroup 在其继承类属性 为volatile 线程可见 包可见
+ * 顶层 Cloneable
+ * |
+ * AbstractBootstrap
+ * |                  |
+ * ServerBootstrap  Bootstrap
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
 
@@ -50,7 +59,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     private volatile EventLoopGroup childGroup;
     private volatile ChannelHandler childHandler;
 
-    public ServerBootstrap() { }
+    public ServerBootstrap() {
+    }
 
     private ServerBootstrap(ServerBootstrap bootstrap) {
         super(bootstrap);
@@ -66,6 +76,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     /**
      * Specify the {@link EventLoopGroup} which is used for the parent (acceptor) and the child (client).
+     * 重载了 group()函数
      */
     @Override
     public ServerBootstrap group(EventLoopGroup group) {
@@ -78,6 +89,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * {@link Channel}'s.
      */
     public ServerBootstrap group(EventLoopGroup parentGroup, EventLoopGroup childGroup) {
+        // 赋值给父类的 线程可见性 group
         super.group(parentGroup);
         if (childGroup == null) {
             throw new NullPointerException("childGroup");
@@ -85,6 +97,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         if (this.childGroup != null) {
             throw new IllegalStateException("childGroup set already");
         }
+        // 赋值给所属自己的 childGroup
         this.childGroup = childGroup;
         return this;
     }
@@ -139,24 +152,27 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     @Override
     void init(Channel channel) throws Exception {
+        //  获取ServerBootstrap 中的 options和attrs的配置 然后设置在新创建的channel对象中
         final Map<ChannelOption<?>, Object> options = options0();
         synchronized (options) {
             setChannelOptions(channel, options, logger);
         }
-
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
-            for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
+            for (Entry<AttributeKey<?>, Object> e : attrs.entrySet()) {
                 @SuppressWarnings("unchecked")
                 AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
+                // 将 attrs设置 到 新创建的 channel中
                 channel.attr(key).set(e.getValue());
             }
         }
 
+        // 获取创建的channel的pipeline 此时的pipeline 是DefaultChannelPipeline 里面存在两个节点 tail head
         ChannelPipeline p = channel.pipeline();
-
+        // 获取workGroup的 handler及配置
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
+
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
         synchronized (childOptions) {
@@ -165,11 +181,20 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         synchronized (childAttrs) {
             currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
         }
-
+        // 添加到tail之前 向前推着走
+        /*
+        * 由于此时的这个channel还没有被register到eventLoop 于是在addLast方法的调用链中 会给pipeline添加一个PendingHandlerAddedTask
+        * 其目的是在channel被register到eventLoop的时候会触发一个回调事件
+        * 然后在这个AbstractBootstrap.initAndRegister 这个channel会被register到boss EventLoopGroup
+        * 接着就会被register到boss 中的一个eventLoop
+        * 在AbstractChannel.register方法中 之前注册的PendingHandlerAddedTask会被调用 经过一系列的调用之后 ChannelInitializer.handlerAdded 会被调用
+        * 里面就会调用到initChannel
+        * */
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) throws Exception {
                 final ChannelPipeline pipeline = ch.pipeline();
+                // 将用户自定义的handler 添加到新建的 pipeline
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
@@ -178,7 +203,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
-                        pipeline.addLast(new ServerBootstrapAcceptor(
+                        pipeline.addLast(new ServerBootstrapAcceptor( // 添加一个Acceptor
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
                 });
@@ -238,20 +263,25 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             };
         }
 
+        /**
+         * 当服务器接收到新连接的时候会被触发 然后设置各种channel的属性 与关联的pipeline
+         * 这个channel接着会被交付给worker 然后这个channel上面的任何读写操作将会在worker上执行
+         * @param ctx
+         * @param msg
+         */
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
-
+            // 绑定child 的 pipeline 添加用户自定义的handler
             child.pipeline().addLast(childHandler);
-
             setChannelOptions(child, childOptions, logger);
-
-            for (Entry<AttributeKey<?>, Object> e: childAttrs) {
+            for (Entry<AttributeKey<?>, Object> e : childAttrs) {
                 child.attr((AttributeKey<Object>) e.getKey()).set(e.getValue());
             }
 
             try {
+                //根据策略 会选择一个NioServerLoop 处理channel  next().register(channel);
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

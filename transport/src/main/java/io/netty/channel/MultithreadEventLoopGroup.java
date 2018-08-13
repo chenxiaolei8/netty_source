@@ -47,6 +47,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
 
     /**
      * @see MultithreadEventExecutorGroup#MultithreadEventExecutorGroup(int, Executor, Object...)
+     * 初始化 channel数 核心数 * 2
      */
     protected MultithreadEventLoopGroup(int nThreads, Executor executor, Object... args) {
         super(nThreads == 0 ? DEFAULT_EVENT_LOOP_THREADS : nThreads, executor, args);
@@ -83,6 +84,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
 
     @Override
     public ChannelFuture register(Channel channel) {
+        // 根据选择策略 选择合适的NioEventLoop
         return next().register(channel);
     }
 

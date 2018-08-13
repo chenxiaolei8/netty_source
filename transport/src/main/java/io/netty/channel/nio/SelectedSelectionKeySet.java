@@ -20,6 +20,10 @@ import java.util.AbstractSet;
 import java.util.Arrays;
 import java.util.Iterator;
 
+/**
+ * 继承了 AbstractSet
+ * 但实际上 直接用数组实现了add方法 这样时间复杂度就是 o(1)
+ */
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
     SelectionKey[] keys;

@@ -65,29 +65,31 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param executor          the Executor to use, or {@code null} if the default should be used.
      * @param chooserFactory    the {@link EventExecutorChooserFactory} to use.
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
+     *                          真正的创建 nioEventLoopGroup
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
         if (nThreads <= 0) {
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
-
+        // 创建 ThreadPerTaskExecutor
         if (executor == null) {
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
-        children = new EventExecutor[nThreads];
+        children = new EventExecutor[nThreads]; // 设定线程池的大小
 
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // 创建 nThreads 个处理线程 创建的 NioEventLoop
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
                 // TODO: Think about if this is a good exception type
                 throw new IllegalStateException("failed to create a child event loop", e);
             } finally {
-                if (!success) {
+                if (!success) { // 如果创建出错 那么child[] 全部shutdown
                     for (int j = 0; j < i; j ++) {
                         children[j].shutdownGracefully();
                     }
@@ -107,9 +109,9 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
                 }
             }
         }
-
+        // 设定新任务的分配策略
         chooser = chooserFactory.newChooser(children);
-
+        // 注册一些回调函数 用于清理工作
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
@@ -118,7 +120,6 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
                 }
             }
         };
-
         for (EventExecutor e: children) {
             e.terminationFuture().addListener(terminationListener);
         }
@@ -127,7 +128,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         Collections.addAll(childrenSet, children);
         readonlyChildren = Collections.unmodifiableSet(childrenSet);
     }
-
+    // getClass 也就是 nioEventLoopGroup
     protected ThreadFactory newDefaultThreadFactory() {
         return new DefaultThreadFactory(getClass());
     }

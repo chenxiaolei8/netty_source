@@ -82,6 +82,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         this.parent = parent;
         id = newId();
         unsafe = newUnsafe();
+        // 服务端 客户端相关的链 很重要的组件
+        // 创建 DefaultChannelPipeline
         pipeline = newChannelPipeline();
     }
 
@@ -455,8 +457,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
-        @Override
+        @Override // 服务端的在调用
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
+            // bind的时候 初始化 调用
             if (eventLoop == null) {
                 throw new NullPointerException("eventLoop");
             }
@@ -471,8 +474,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             AbstractChannel.this.eventLoop = eventLoop;
-
+            // 当前线程是 Group
             if (eventLoop.inEventLoop()) {
+                // 真正的注册
                 register0(promise);
             } else {
                 try {
@@ -493,6 +497,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 注册方式
+         * @param promise
+         */
         private void register0(ChannelPromise promise) {
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
@@ -501,16 +509,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
-                doRegister();
+                // 1
+                doRegister();// 将Channel注册到Selector中 具体实现位于AbstractNioChannel
                 neverRegistered = false;
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
-                pipeline.invokeHandlerAddedIfNeeded();
+                // 2
+                pipeline.invokeHandlerAddedIfNeeded(); //这里会将ServerBootstrapAcceptor添加到当前Channel中  触发一些返回的参数
 
                 safeSetSuccess(promise);
-                pipeline.fireChannelRegistered();
+                // 3
+                pipeline.fireChannelRegistered(); // 触发Pipeline 的channelRegistered事件
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
                 if (isActive()) {

@@ -760,7 +760,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (task == null) {
             throw new NullPointerException("task");
         }
-
+        // 判断是否是NioEventLoop线程 如果不是 则先启动
         boolean inEventLoop = inEventLoop();
         addTask(task);
         if (!inEventLoop) {
@@ -881,6 +881,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 运行 nioEventLoop
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

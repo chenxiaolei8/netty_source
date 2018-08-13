@@ -60,6 +60,7 @@ public class DefaultThreadFactory implements ThreadFactory {
     }
 
     public DefaultThreadFactory(Class<?> poolType, boolean daemon, int priority) {
+        // 获取 前缀名字第一位小写 是否守护线程 默认线程优先级
         this(toPoolName(poolType), daemon, priority);
     }
 
@@ -91,7 +92,7 @@ public class DefaultThreadFactory implements ThreadFactory {
             throw new IllegalArgumentException(
                     "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
         }
-
+        // 全局的
         prefix = poolName + '-' + poolId.incrementAndGet() + '-';
         this.daemon = daemon;
         this.priority = priority;

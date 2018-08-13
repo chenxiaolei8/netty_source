@@ -32,6 +32,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
     @SuppressWarnings("unchecked")
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
+        // 检测是否2的幂的时候 那么就使用优化的方式Chooser 就是为了提升性能不择手段 优化的 走的底层
         if (isPowerOfTwo(executors.length)) {
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
@@ -51,6 +52,10 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
             this.executors = executors;
         }
 
+        /**
+         * 调用next方法  使用 & 方式 提升性能
+         * @return
+         */
         @Override
         public EventExecutor next() {
             return executors[idx.getAndIncrement() & executors.length - 1];

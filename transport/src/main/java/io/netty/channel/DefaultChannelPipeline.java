@@ -42,6 +42,13 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 /**
  * The default {@link ChannelPipeline} implementation.  It is usually created
  * by a {@link Channel} implementation when the {@link Channel} is created.
+ * EmbeddedChannelPipeline.java 主要用于测试
+ * DefaultChannelPipeline 主要维护了 pipeline对channel的引用 而且pipeline内部维护了一个双向链表 head是链表的头 tail是链表的尾
+ * 链表的指针是AbstractChannelHandlerContext 类型
+ * 初始化的时候
+ * HeadContext  <====> TailContext
+ * 其中 headContext 是outboundHandler tailContext是 inboundHandler
+ * 基本上就是占位符的效果
  */
 public class DefaultChannelPipeline implements ChannelPipeline {
 
@@ -88,13 +95,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * change.
      */
     private boolean registered;
-
+    // 初始化 pipeline 供NioServerSocketChannel使用
     protected DefaultChannelPipeline(Channel channel) {
         this.channel = ObjectUtil.checkNotNull(channel, "channel");
         succeededFuture = new SucceededChannelFuture(channel, null);
         voidPromise =  new VoidChannelPromise(channel, true);
-
+        // inbound
         tail = new TailContext(this);
+        // outbound
         head = new HeadContext(this);
 
         head.next = tail;
@@ -204,8 +212,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     @Override
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
-        synchronized (this) {
-            checkMultiplicity(handler);
+        synchronized (this) { // 很重要 使用DefaultChannelPipeline 作为锁 使pipeline的handle执行串行化
+            checkMultiplicity(handler); // 禁止重复的 handler进入pipeline
 
             newCtx = newContext(group, filterName(name, handler), handler);
 
@@ -962,6 +970,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRead(Object msg) {
+        // 这里传入的事head节点
         AbstractChannelHandlerContext.invokeChannelRead(head, msg);
         return this;
     }
@@ -1215,11 +1224,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     protected void onUnhandledInboundMessage(Object msg) {
         try {
+            // 只是打印了一下日志 没有在关联下一个handler
             logger.debug(
                     "Discarded inbound message {} that reached at the tail of the pipeline. " +
                             "Please check your pipeline configuration.", msg);
         } finally {
-            ReferenceCountUtil.release(msg);
+            ReferenceCountUtil.release(msg);// 释放内存
         }
     }
 
@@ -1331,6 +1341,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         private final Unsafe unsafe;
 
         HeadContext(DefaultChannelPipeline pipeline) {
+            // outbound
             super(pipeline, null, HEAD_NAME, false, true);
             unsafe = pipeline.channel().unsafe();
             setAddComplete();
@@ -1429,6 +1440,13 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             ctx.fireChannelInactive();
         }
 
+        /**
+         * 直接调用fireChannelRead 传输到下一个 自定义handler中
+         * 也就是说 即使不存在 也会经历 head AND tail
+         * @param ctx
+         * @param msg
+         * @throws Exception
+         */
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             ctx.fireChannelRead(msg);
